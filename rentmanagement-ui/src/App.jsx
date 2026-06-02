@@ -582,8 +582,8 @@ Thank you! 🙏`;
       <div className="w-full min-h-screen sm:min-h-[820px] sm:max-h-[820px] sm:max-w-md sm:rounded-[40px] sm:border-[10px] sm:border-slate-800 sm:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-slate-900 text-slate-100 flex flex-col relative overflow-hidden">
         
         {!isOnboarded ? (
-          /* ONBOARDING SETUP FLOW */
-          <div className="flex-1 flex flex-col p-6 justify-between overflow-y-auto bg-slate-950/20 backdrop-blur-sm animate-fadeIn">
+          /* ONBOARDING SETUP FLOW - Safe area optimized */
+          <div className="flex-1 flex flex-col p-6 pt-[calc(24px+env(safe-area-inset-top,16px))] pb-[calc(24px+env(safe-area-inset-bottom,16px))] justify-between overflow-y-auto bg-slate-950/20 backdrop-blur-sm animate-fadeIn">
             <div className="space-y-6">
               
               {/* App Logo & Welcome */}
@@ -695,8 +695,8 @@ Thank you! 🙏`;
         ) : (
           /* REGULAR MAIN APPLICATION CONTAINER */
           <>
-            {/* MOBILE APPLICATION HEADER */}
-            <header className="bg-slate-950 p-4 border-b border-slate-850 flex justify-between items-center sticky top-0 z-40 backdrop-blur-md bg-opacity-90 shrink-0">
+            {/* MOBILE APPLICATION HEADER - Safe area padded */}
+            <header className="bg-slate-950 px-4 pt-[calc(16px+env(safe-area-inset-top,16px))] pb-4 sm:pt-4 border-b border-slate-850 flex justify-between items-center sticky top-0 z-40 backdrop-blur-md bg-opacity-90 shrink-0">
               <div>
                 <h2 className="text-sm font-black tracking-tight text-blue-500 uppercase italic">
                   LogicSync Rent
@@ -711,8 +711,8 @@ Thank you! 🙏`;
               </button>
             </header>
 
-            {/* MAIN LAYOUT WRAPPER */}
-            <main className="flex-1 p-4 overflow-y-auto pb-6">
+            {/* MAIN LAYOUT WRAPPER - With extra bottom padding to clear the floating bar */}
+            <main className="flex-1 p-4 overflow-y-auto pb-28 pt-4">
         
         {/* TAB 1: DASHBOARD CONTAINER */}
         {activeTab === 'dashboard' && (
@@ -1259,8 +1259,8 @@ Thank you! 🙏`;
 
       </main>
 
-      {/* PERSISTENT BOTTOM NAVIGATION BAR */}
-      <nav className="bg-slate-950 border-t border-slate-850 flex justify-around items-center p-3.5 sticky bottom-0 z-40 backdrop-blur-md bg-opacity-95 shrink-0">
+      {/* PERSISTENT FLOATING BOTTOM NAVIGATION BAR */}
+      <nav className="absolute bottom-4 left-4 right-4 z-40 bg-slate-950/80 backdrop-blur-xl border border-slate-850 rounded-2xl flex justify-around items-center p-3 shadow-[0_10px_35px_rgba(0,0,0,0.7)] pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
         <button 
           onClick={() => setActiveTab("dashboard")} 
           className={`flex flex-col items-center space-y-1 ${activeTab === 'dashboard' ? 'text-blue-500 animate-pulseFast' : 'text-slate-500'}`}
