@@ -29,12 +29,12 @@ public class PdfService {
 
         // 1. Building & Owner Header
         Font buildingFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, new Color(0, 51, 102));
-        Paragraph buildingName = new Paragraph("NILKANTHESHWAR HEIGHTS", buildingFont);
+        Paragraph buildingName = new Paragraph("MY BUILDING HEIGHTS", buildingFont);
         buildingName.setAlignment(Element.ALIGN_CENTER);
         document.add(buildingName);
 
         Font ownerHeaderFont = FontFactory.getFont(FontFactory.HELVETICA, 10, Color.BLACK);
-        Paragraph ownerHeader = new Paragraph("Owner: Sunil Kshirsagar | Contact: +91 8788385986", ownerHeaderFont);
+        Paragraph ownerHeader = new Paragraph("Owner: Landlord | Contact: +91 9999999999", ownerHeaderFont);
         ownerHeader.setAlignment(Element.ALIGN_CENTER);
         ownerHeader.setSpacingAfter(5f);
         document.add(ownerHeader);
@@ -129,13 +129,13 @@ public class PdfService {
         textCell.setVerticalAlignment(Element.ALIGN_MIDDLE); // Correct vertical centering
 
         // Payee Name
-        Paragraph pName = new Paragraph("Mohini Kshirsagar", ownerHeaderFont);
+        Paragraph pName = new Paragraph("Landlord Name", ownerHeaderFont);
         pName.setSpacingAfter(10f); // Space between name and link
         textCell.addElement(pName);
 
         // Clickable UPI Link
-        String upiUri = "upi://pay?pa=sunilksh719@oksbi&pn=Sunil%20Kshirsagar&am=" + invoice.getTotalAmount() + "&cu=INR";
-        Anchor upiAnchor = new Anchor("UPI ID: sunilksh719@oksbi", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.BLUE));
+        String upiUri = "upi://pay?pa=landlord@upi&pn=Landlord%20Name&am=" + invoice.getTotalAmount() + "&cu=INR";
+        Anchor upiAnchor = new Anchor("UPI ID: landlord@upi", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.BLUE));
         upiAnchor.setReference(upiUri);
         Paragraph pLink = new Paragraph();
         pLink.add(upiAnchor);

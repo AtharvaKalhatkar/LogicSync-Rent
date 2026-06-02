@@ -220,8 +220,8 @@ const App = () => {
   // UPI Payment Details
   const getUpiUrl = (invoice) => {
     const amount = parseFloat(invoice.totalAmount).toFixed(2);
-    const payee = encodeURIComponent(pricingSettings.payeeName || "Nilkantheshwer Heights");
-    const upi = pricingSettings.upiId || "sunilksh719@oksbi";
+    const payee = encodeURIComponent(pricingSettings.payeeName || "Landlord Name");
+    const upi = pricingSettings.upiId || "landlord@upi";
     return `upi://pay?pa=${upi}&pn=${payee}&am=${amount}&cu=INR`;
   };
 
@@ -608,7 +608,7 @@ Thank you! 🙏`;
                     <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Property / Building Name</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Nilkantheshwer Heights"
+                      placeholder="e.g. Sunrise Apartments"
                       value={pricingSettings.buildingName || ''} 
                       onChange={e => setPricingSettings({...pricingSettings, buildingName: e.target.value})} 
                       className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
@@ -618,7 +618,7 @@ Thank you! 🙏`;
                     <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Landlord / Owner Name</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Sunil Kshirsagar"
+                      placeholder="e.g. John Doe"
                       value={pricingSettings.ownerName || ''} 
                       onChange={e => setPricingSettings({...pricingSettings, ownerName: e.target.value})} 
                       className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
@@ -629,7 +629,7 @@ Thank you! 🙏`;
                       <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Contact Phone (WhatsApp)</label>
                       <input 
                         type="text" 
-                        placeholder="+91 8788385986"
+                        placeholder="+91 9999999999"
                         value={pricingSettings.ownerPhone || ''} 
                         onChange={e => setPricingSettings({...pricingSettings, ownerPhone: e.target.value})} 
                         className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
@@ -639,7 +639,7 @@ Thank you! 🙏`;
                       <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">UPI Payee Display Name</label>
                       <input 
                         type="text" 
-                        placeholder="e.g. Mohini Kshirsagar"
+                        placeholder="e.g. Jane Doe"
                         value={pricingSettings.payeeName || ''} 
                         onChange={e => setPricingSettings({...pricingSettings, payeeName: e.target.value})} 
                         className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
@@ -650,7 +650,7 @@ Thank you! 🙏`;
                     <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">UPI ID for Direct QR payments</label>
                     <input 
                       type="text" 
-                      placeholder="sunilksh719@oksbi"
+                      placeholder="landlord@upi"
                       value={pricingSettings.upiId || ''} 
                       onChange={e => setPricingSettings({...pricingSettings, upiId: e.target.value})} 
                       className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
@@ -1455,7 +1455,7 @@ Thank you! 🙏`;
                   {pricingSettings.buildingName || "MY BUILDING"}
                 </h4>
                 <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
-                  Owner: {pricingSettings.ownerName || "Sunil Kshirsagar"} | Contact: {pricingSettings.ownerPhone || "+91 8788385986"}
+                  Owner: {pricingSettings.ownerName || "Landlord"} | Contact: {pricingSettings.ownerPhone || "+91 9999999999"}
                 </p>
                 <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mt-2">
                   Utility & Rent Receipt
@@ -1530,8 +1530,8 @@ Thank you! 🙏`;
               <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-900 flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
                 <div className="text-center md:text-left space-y-1">
                   <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Direct Payment Desk</span>
-                  <span className="text-xs font-black text-slate-300 block">{pricingSettings.payeeName || "Mohini Kshirsagar"}</span>
-                  <span className="text-[9px] font-bold text-blue-500 block underline truncate max-w-[200px]">{pricingSettings.upiId || "sunilksh719@oksbi"}</span>
+                  <span className="text-xs font-black text-slate-300 block">{pricingSettings.payeeName || "Landlord Name"}</span>
+                  <span className="text-[9px] font-bold text-blue-500 block underline truncate max-w-[200px]">{pricingSettings.upiId || "landlord@upi"}</span>
                 </div>
                 
                 {/* Real-time Dynamic UPI Pay QR */}
