@@ -1,12 +1,9 @@
 const CACHE_NAME = 'rent-mgmt-v1';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/src/main.jsx',
-  '/src/App.jsx',
-  '/src/index.css',
-  '/src/storage.js',
-  '/vite.svg'
+  './',
+  'index.html',
+  'manifest.json',
+  'logisync_rent_logo.png'
 ];
 
 self.addEventListener('install', (e) => {
