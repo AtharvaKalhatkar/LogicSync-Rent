@@ -177,6 +177,12 @@ export const tenantService = {
       const tenants = JSON.parse(localStorage.getItem('rm_tenants'));
       const filtered = tenants.filter(t => t.id !== id);
       localStorage.setItem('rm_tenants', JSON.stringify(filtered));
+
+      // Cascade delete all invoices associated with this deleted tenant
+      const invoices = JSON.parse(localStorage.getItem('rm_invoices')) || [];
+      const filteredInvoices = invoices.filter(inv => inv.tenantId !== id);
+      localStorage.setItem('rm_invoices', JSON.stringify(filteredInvoices));
+
       return true;
     }
     // Remote

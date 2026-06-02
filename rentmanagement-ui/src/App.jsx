@@ -140,7 +140,8 @@ const App = () => {
     if (!window.confirm("Are you sure you want to delete this tenant completely?")) return;
     try {
       await tenantService.delete(id);
-      loadTenants();
+      await loadTenants();
+      await fetchMonthlyHistory();
     } catch (err) {
       alert("Failed to delete tenant.");
     }
@@ -472,9 +473,40 @@ Thank you! 🙏`;
   };
 
   const handleResetProfile = () => {
-    if (!window.confirm("Are you sure you want to reset your profile details? This will clear the white-labeled configurations and return you to the onboarding setup sheet."));
+    if (!window.confirm("Are you sure you want to reset your LogicSync Rent profile? This will completely ERASE all registered tenants, utility readings, invoices, outstanding dues, and settings, returning you to a clean onboarding screen.")) return;
+    
+    // Clear databases
     localStorage.setItem('rm_onboarded', 'false');
+    localStorage.setItem('rm_settings', JSON.stringify({
+      buildingName: "",
+      ownerName: "",
+      ownerPhone: "",
+      payeeName: "",
+      upiId: "",
+      roomRent: 5000,
+      unitPrice: 10.0,
+      effectiveFrom: new Date().toISOString().split('T')[0]
+    }));
+    localStorage.setItem('rm_tenants', JSON.stringify([]));
+    localStorage.setItem('rm_readings', JSON.stringify([]));
+    localStorage.setItem('rm_invoices', JSON.stringify([]));
+
+    // Clear React states
+    setPricingSettings({
+      buildingName: '',
+      ownerName: '',
+      ownerPhone: '',
+      payeeName: '',
+      upiId: '',
+      roomRent: '',
+      unitPrice: '',
+      effectiveFrom: ''
+    });
+    setTenants([]);
+    setMonthlyInvoices([]);
     setIsOnboarded(false);
+    
+    alert("Application data wiped successfully! Welcome to your new clean slate.");
   };
 
   // Print Invoice Functionality
