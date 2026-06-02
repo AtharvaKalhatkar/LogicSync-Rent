@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+@import "tailwindcss";
 
 /* Global Font Override */
 body {
@@ -21,13 +21,13 @@ body {
 .dark-theme .bg-slate-950 {
   background-color: #0b0f19 !important; /* premium navy-slate 950 */
 }
-.dark-theme .bg-slate-950/20 {
+.dark-theme .bg-slate-950\/20 {
   background-color: rgba(11, 15, 25, 0.2) !important;
 }
-.dark-theme .bg-slate-950/80 {
+.dark-theme .bg-slate-950\/80 {
   background-color: rgba(11, 15, 25, 0.8) !important;
 }
-.dark-theme .bg-slate-900/50 {
+.dark-theme .bg-slate-900\/50 {
   background-color: #0e1626 !important;
 }
 .dark-theme .border-slate-800,
@@ -50,16 +50,16 @@ body {
 .light-theme .bg-slate-950 {
   background-color: #ffffff !important; /* clean white */
 }
-.light-theme .bg-slate-950/20 {
+.light-theme .bg-slate-950\/20 {
   background-color: rgba(255, 255, 255, 0.2) !important;
 }
-.light-theme .bg-slate-950/80 {
+.light-theme .bg-slate-950\/80 {
   background-color: rgba(255, 255, 255, 0.85) !important;
 }
-.light-theme .bg-slate-900/50 {
+.light-theme .bg-slate-900\/50 {
   background-color: #f1f5f9 !important; /* slate 100 */
 }
-.light-theme .bg-slate-950/70 {
+.light-theme .bg-slate-950\/70 {
   background-color: #f8fafc !important;
 }
 .light-theme .bg-gradient-to-br {
