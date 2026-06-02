@@ -1286,7 +1286,7 @@ Thank you! 🙏`;
       </main>
 
       {/* PERSISTENT FLOATING BOTTOM NAVIGATION BAR */}
-      <nav className="absolute bottom-4 left-4 right-4 z-40 bg-slate-950/80 backdrop-blur-xl border border-slate-850 rounded-2xl flex justify-around items-center p-3 shadow-[0_10px_35px_rgba(0,0,0,0.7)] pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
+      <nav className="fixed sm:absolute bottom-4 left-4 right-4 z-40 bg-slate-950/80 backdrop-blur-xl border border-slate-850 rounded-2xl flex justify-around items-center p-3 shadow-[0_10px_35px_rgba(0,0,0,0.7)] pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
         <button 
           onClick={() => setActiveTab("dashboard")} 
           className={`flex flex-col items-center space-y-1 ${activeTab === 'dashboard' ? 'text-blue-500 animate-pulseFast' : 'text-slate-500'}`}
