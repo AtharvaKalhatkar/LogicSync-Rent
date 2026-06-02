@@ -589,7 +589,7 @@ Thank you! 🙏`;
               {/* App Logo & Welcome */}
               <div className="text-center pt-6 space-y-3">
                 <div className="mx-auto w-20 h-20 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center shadow-xl shadow-blue-500/5 overflow-hidden">
-                  <img src="/logisync_rent_logo.png" alt="LogicSync Logo" className="w-16 h-16 object-contain" />
+                  <img src="logisync_rent_logo.png" alt="LogicSync Logo" className="w-16 h-16 object-contain" />
                 </div>
                 <div>
                   <h2 className="text-xl font-black tracking-tight text-slate-100">LogicSync Rent</h2>
