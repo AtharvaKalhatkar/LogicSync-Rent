@@ -866,7 +866,7 @@ Thank you! 🙏`;
             {/* MOBILE APPLICATION HEADER - Safe area padded */}
             <header className="bg-slate-950 px-4 pt-[calc(16px+env(safe-area-inset-top,16px))] pb-4 sm:pt-4 border-b border-slate-850 flex justify-between items-center sticky top-0 z-40 backdrop-blur-md bg-opacity-90 shrink-0">
               <div>
-                <h2 className="text-sm font-black tracking-tight text-blue-500 uppercase italic">
+                <h2 className="text-lg font-bold tracking-tight text-slate-100">
                   LogicSync Rent
                 </h2>
                 <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider flex items-center mt-0.5">
