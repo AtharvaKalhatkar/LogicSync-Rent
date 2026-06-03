@@ -9,6 +9,81 @@ const generateUUID = () => {
   });
 };
 
+// ========================================================================================
+// PROPERTY TYPE SYSTEM — Universal Label Engine
+// ========================================================================================
+export const PROPERTY_TYPES = {
+  apartment: {
+    id: 'apartment',
+    name: 'Apartment / Flat',
+    icon: '🏢',
+    tenant: 'Tenant',
+    tenants: 'Tenants',
+    unit: 'Room',
+    units: 'Rooms',
+    property: 'Building',
+    unitNo: 'Room No',
+    register: 'Register Tenant',
+    description: 'Residential apartments, flats, and buildings'
+  },
+  hostel: {
+    id: 'hostel',
+    name: 'Hostel / PG',
+    icon: '🏠',
+    tenant: 'Guest',
+    tenants: 'Guests',
+    unit: 'Bed',
+    units: 'Beds',
+    property: 'Hostel',
+    unitNo: 'Bed/Room No',
+    register: 'Register Guest',
+    description: 'Hostels, paying guests, and dormitories'
+  },
+  commercial: {
+    id: 'commercial',
+    name: 'Commercial / Shop',
+    icon: '🏪',
+    tenant: 'Lessee',
+    tenants: 'Lessees',
+    unit: 'Shop',
+    units: 'Shops',
+    property: 'Complex',
+    unitNo: 'Shop No',
+    register: 'Register Lessee',
+    description: 'Commercial shops, offices, and retail spaces'
+  },
+  coworking: {
+    id: 'coworking',
+    name: 'Co-Working Space',
+    icon: '💼',
+    tenant: 'Member',
+    tenants: 'Members',
+    unit: 'Desk',
+    units: 'Desks',
+    property: 'Space',
+    unitNo: 'Desk/Cabin No',
+    register: 'Register Member',
+    description: 'Co-working spaces, shared offices, and cabins'
+  },
+  villa: {
+    id: 'villa',
+    name: 'Villa / Independent',
+    icon: '🏡',
+    tenant: 'Tenant',
+    tenants: 'Tenants',
+    unit: 'House',
+    units: 'Houses',
+    property: 'Property',
+    unitNo: 'House No',
+    register: 'Register Tenant',
+    description: 'Individual villas, bungalows, and independent houses'
+  }
+};
+
+export const getPropertyLabels = (type) => {
+  return PROPERTY_TYPES[type] || PROPERTY_TYPES.apartment;
+};
+
 // Default Configurations (Empty by default for a white-label clean slate)
 const DEFAULT_SETTINGS = {
   buildingName: "",
@@ -18,6 +93,11 @@ const DEFAULT_SETTINGS = {
   upiId: "",
   roomRent: 5000,
   unitPrice: 10.0,
+  waterRate: 0,
+  maintenanceCharge: 0,
+  enableWaterBilling: false,
+  enableMaintenance: false,
+  propertyType: "apartment",
   effectiveFrom: new Date().toISOString().split('T')[0]
 };
 
@@ -35,6 +115,11 @@ const initializeLocalStorageDB = () => {
   }
   if (!localStorage.getItem('rm_settings')) {
     localStorage.setItem('rm_settings', JSON.stringify(DEFAULT_SETTINGS));
+  } else {
+    // Migrate: ensure new fields exist in old saved settings
+    const existing = JSON.parse(localStorage.getItem('rm_settings'));
+    const migrated = { ...DEFAULT_SETTINGS, ...existing };
+    localStorage.setItem('rm_settings', JSON.stringify(migrated));
   }
   if (!localStorage.getItem('rm_tenants')) {
     localStorage.setItem('rm_tenants', JSON.stringify(SEED_TENANTS));
@@ -77,7 +162,8 @@ export const storageService = {
 export const settingsService = {
   get: async () => {
     if (storageService.getMode() === 'local') {
-      return JSON.parse(localStorage.getItem('rm_settings'));
+      const saved = JSON.parse(localStorage.getItem('rm_settings'));
+      return { ...DEFAULT_SETTINGS, ...saved };
     }
     // Remote
     try {
@@ -87,6 +173,7 @@ export const settingsService = {
       const latest = res.data[0] || {};
       const local = JSON.parse(localStorage.getItem('rm_settings'));
       return {
+        ...DEFAULT_SETTINGS,
         ...local,
         roomRent: latest.roomRent || local.roomRent,
         unitPrice: latest.unitPrice || local.unitPrice,
@@ -94,16 +181,18 @@ export const settingsService = {
       };
     } catch (err) {
       console.warn("Backend unavailable. Fallback to local settings.");
-      return JSON.parse(localStorage.getItem('rm_settings'));
+      const saved = JSON.parse(localStorage.getItem('rm_settings'));
+      return { ...DEFAULT_SETTINGS, ...saved };
     }
   },
 
   save: async (settings) => {
     // Always save locally first as config details (owner/building info) are stored client side for universality!
-    localStorage.setItem('rm_settings', JSON.stringify(settings));
+    const merged = { ...DEFAULT_SETTINGS, ...settings };
+    localStorage.setItem('rm_settings', JSON.stringify(merged));
     
     if (storageService.getMode() === 'local') {
-      return settings;
+      return merged;
     }
     // Remote: Sync pricing policy to spring boot backend
     try {
@@ -113,7 +202,7 @@ export const settingsService = {
         unitPrice: parseFloat(settings.unitPrice),
         effectiveFrom: settings.effectiveFrom || new Date().toISOString().split('T')[0]
       });
-      return settings;
+      return merged;
     } catch (err) {
       console.error("Failed to sync settings with backend server", err);
       throw err;
@@ -145,7 +234,7 @@ export const tenantService = {
       // Duplicate checks
       const isDuplicateRoom = tenants.some(t => t.active && t.roomNo === tenant.roomNo);
       if (isDuplicateRoom) {
-        throw new Error("Active room number already registered!");
+        throw new Error("Active unit number already registered!");
       }
 
       tenants.push(newTenant);
@@ -182,6 +271,14 @@ export const tenantService = {
       const invoices = JSON.parse(localStorage.getItem('rm_invoices')) || [];
       const filteredInvoices = invoices.filter(inv => inv.tenantId !== id);
       localStorage.setItem('rm_invoices', JSON.stringify(filteredInvoices));
+
+      // Cascade delete readings for this tenant's room
+      const deletedTenant = tenants.find(t => t.id === id);
+      if (deletedTenant) {
+        const readings = JSON.parse(localStorage.getItem('rm_readings')) || [];
+        const filteredReadings = readings.filter(r => r.roomNo !== deletedTenant.roomNo);
+        localStorage.setItem('rm_readings', JSON.stringify(filteredReadings));
+      }
 
       return true;
     }
@@ -271,7 +368,7 @@ export const invoiceService = {
       const invoices = JSON.parse(localStorage.getItem('rm_invoices'));
 
       if (tenants.length === 0) {
-        throw new Error("No active tenants found.");
+        throw new Error("No active occupants found.");
       }
 
       const commonUnitsShare = parseFloat(totalCommonUnits) / tenants.length;
@@ -282,6 +379,12 @@ export const invoiceService = {
       
       // Prepare invoice array
       const updatedInvoices = [...invoices];
+
+      // Retrieve settings for extra charges
+      const waterRate = parseFloat(settings.waterRate || 0);
+      const maintenanceCharge = parseFloat(settings.maintenanceCharge || 0);
+      const enableWaterBilling = settings.enableWaterBilling || false;
+      const enableMaintenance = settings.enableMaintenance || false;
 
       tenants.forEach(tenant => {
         // Find reading for this room and month
@@ -298,7 +401,15 @@ export const invoiceService = {
         const unitsConsumed = reading.unitsConsumed;
         const electricityCharge = unitsConsumed * parseFloat(settings.unitPrice);
         const commonAreaCharge = commonUnitsShare * parseFloat(settings.unitPrice);
-        const totalAmount = parseFloat(settings.roomRent) + electricityCharge + commonAreaCharge;
+        
+        // Per-unit custom rent override
+        const baseRent = parseFloat(tenant.customRent || settings.roomRent);
+        
+        // Optional charges
+        const waterCharge = enableWaterBilling ? waterRate : 0;
+        const maintCharge = enableMaintenance ? maintenanceCharge : 0;
+        
+        const totalAmount = baseRent + electricityCharge + commonAreaCharge + waterCharge + maintCharge;
 
         const newInvoice = {
           id: generateUUID(),
@@ -308,11 +419,13 @@ export const invoiceService = {
           billingMonth: billingMonthStr,
           createdAt: new Date().toISOString(),
           status: "GENERATED",
-          roomRent: parseFloat(settings.roomRent),
+          roomRent: baseRent,
           unitPrice: parseFloat(settings.unitPrice),
           unitsConsumed,
           electricityCharge,
           commonAreaCharge,
+          waterCharge,
+          maintenanceCharge: maintCharge,
           previousReading: reading.previousReading,
           currentReading: reading.currentReading,
           totalAmount
@@ -386,7 +499,8 @@ export const backupService = {
       rm_readings: JSON.parse(localStorage.getItem('rm_readings')),
       rm_invoices: JSON.parse(localStorage.getItem('rm_invoices')),
       exportedAt: new Date().toISOString(),
-      app: "LogicSync Rent"
+      app: "LogicSync Rent",
+      version: "2.0"
     };
     return JSON.stringify(data, null, 2);
   },
@@ -397,7 +511,9 @@ export const backupService = {
       if (!data.rm_settings || !data.rm_tenants || !data.rm_readings || !data.rm_invoices) {
         throw new Error("Invalid backup file: missing core tables.");
       }
-      localStorage.setItem('rm_settings', JSON.stringify(data.rm_settings));
+      // Migrate imported settings to ensure new fields exist
+      const importedSettings = { ...DEFAULT_SETTINGS, ...data.rm_settings };
+      localStorage.setItem('rm_settings', JSON.stringify(importedSettings));
       localStorage.setItem('rm_tenants', JSON.stringify(data.rm_tenants));
       localStorage.setItem('rm_readings', JSON.stringify(data.rm_readings));
       localStorage.setItem('rm_invoices', JSON.stringify(data.rm_invoices));
@@ -408,4 +524,3 @@ export const backupService = {
     }
   }
 };
-

@@ -1,14 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import { 
   Download, Users, Zap, Plus, FileText, ChevronRight, 
   LayoutDashboard, X, Loader2, Settings, Eye, Phone,
-  CreditCard, Share2, Server, Database, Smartphone, Check, Trash2, Calendar
+  CreditCard, Share2, Server, Database, Smartphone, Check, Trash2, Calendar,
+  Building2, Home, Store, Briefcase, Droplets, Wrench, TrendingUp, BarChart3
 } from 'lucide-react';
 import { 
   storageService, settingsService, tenantService, 
-  meterService, invoiceService, backupService
+  meterService, invoiceService, backupService,
+  PROPERTY_TYPES, getPropertyLabels
 } from './storage';
+
+// ========================================================================================
+// HELPER: Get current month in YYYY-MM format
+// ========================================================================================
+const getCurrentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// ========================================================================================
+// PROPERTY TYPE ICON COMPONENT
+// ========================================================================================
+const PropertyTypeIcon = ({ type, size = 24, className = '' }) => {
+  const icons = {
+    apartment: Building2,
+    hostel: Home,
+    commercial: Store,
+    coworking: Briefcase,
+    villa: Home
+  };
+  const Icon = icons[type] || Building2;
+  return <Icon size={size} className={className} />;
+};
 
 const App = () => {
   // Navigation
@@ -16,6 +41,7 @@ const App = () => {
   
   // Onboarding Wizard status state
   const [isOnboarded, setIsOnboarded] = useState(localStorage.getItem('rm_onboarded') === 'true');
+  const [onboardingStep, setOnboardingStep] = useState(1); // 1: property type, 2: details
   
   // Theme State (Defaulting to Dark)
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -33,7 +59,7 @@ const App = () => {
   // Application Data States
   const [tenants, setTenants] = useState([]);
   const [monthlyInvoices, setMonthlyInvoices] = useState([]);
-  const [month, setMonth] = useState("2026-01");
+  const [month, setMonth] = useState(getCurrentMonth());
   const [commonUnits, setCommonUnits] = useState(50);
   const [loading, setLoading] = useState(false);
   const [storageMode, setStorageMode] = useState(storageService.getMode());
@@ -55,12 +81,25 @@ const App = () => {
     upiId: '',
     roomRent: '',
     unitPrice: '',
+    waterRate: '',
+    maintenanceCharge: '',
+    enableWaterBilling: false,
+    enableMaintenance: false,
+    propertyType: 'apartment',
     effectiveFrom: ''
   });
   const [newTenant, setNewTenant] = useState({ 
     name: '', roomNo: '', phoneNo: '', meterId: '', 
-    aadharNo: '', email: '', joiningDate: new Date().toISOString().split('T')[0] 
+    aadharNo: '', email: '', customRent: '',
+    joiningDate: new Date().toISOString().split('T')[0] 
   });
+
+  // ========================================================================================
+  // DYNAMIC LABELS based on property type
+  // ========================================================================================
+  const labels = useMemo(() => {
+    return getPropertyLabels(pricingSettings.propertyType || 'apartment');
+  }, [pricingSettings.propertyType]);
 
   // Load app details
   useEffect(() => {
@@ -123,20 +162,21 @@ const App = () => {
 
   const handleAddTenant = async () => {
     if (!newTenant.name || !newTenant.roomNo || !newTenant.phoneNo) {
-      alert("Name, Room No, and Phone are required fields.");
+      alert(`Name, ${labels.unitNo}, and Phone are required fields.`);
       return;
     }
     try {
       await tenantService.add(newTenant);
-      alert("Tenant Registered Successfully!");
+      alert(`${labels.tenant} Registered Successfully!`);
       setShowTenantModal(false);
       setNewTenant({
         name: '', roomNo: '', phoneNo: '', meterId: '', 
-        aadharNo: '', email: '', joiningDate: new Date().toISOString().split('T')[0]
+        aadharNo: '', email: '', customRent: '',
+        joiningDate: new Date().toISOString().split('T')[0]
       });
       loadTenants();
     } catch (err) {
-      alert(err.message || "Error adding tenant. Check for duplicate active room.");
+      alert(err.message || `Error adding ${labels.tenant.toLowerCase()}. Check for duplicate active unit.`);
     }
   };
 
@@ -145,18 +185,18 @@ const App = () => {
       await tenantService.toggleActive(id, status);
       loadTenants();
     } catch (err) {
-      alert("Failed to change tenant status.");
+      alert(`Failed to change ${labels.tenant.toLowerCase()} status.`);
     }
   };
 
   const handleDeleteTenant = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this tenant completely?")) return;
+    if (!window.confirm(`Are you sure you want to delete this ${labels.tenant.toLowerCase()} completely? All associated invoices and readings will also be removed.`)) return;
     try {
       await tenantService.delete(id);
       await loadTenants();
       await fetchMonthlyHistory();
     } catch (err) {
-      alert("Failed to delete tenant.");
+      alert(`Failed to delete ${labels.tenant.toLowerCase()}.`);
     }
   };
 
@@ -251,21 +291,30 @@ const App = () => {
   const shareInvoiceWhatsApp = (inv) => {
     const dateObj = new Date(inv.billingMonth);
     const monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-    const building = (pricingSettings.buildingName || "MY BUILDING").toUpperCase();
+    const building = (pricingSettings.buildingName || "MY PROPERTY").toUpperCase();
     const upiUri = getUpiUrl(inv);
 
-    const message = `*${building}* 🏢
+    let breakdown = `1. *Monthly ${labels.unit} Rent*: ₹${parseFloat(inv.roomRent).toFixed(2)}
+2. *Electricity (Personal)*: ₹${parseFloat(inv.electricityCharge).toFixed(2)}
+   (_Readings: ${inv.previousReading} ➔ ${inv.currentReading} = ${inv.unitsConsumed} Units_)
+3. *Common Electricity*: ₹${parseFloat(inv.commonAreaCharge).toFixed(2)}`;
+
+    if (inv.waterCharge > 0) {
+      breakdown += `\n4. *Water Charges*: ₹${parseFloat(inv.waterCharge).toFixed(2)}`;
+    }
+    if (inv.maintenanceCharge > 0) {
+      breakdown += `\n${inv.waterCharge > 0 ? '5' : '4'}. *Maintenance*: ₹${parseFloat(inv.maintenanceCharge).toFixed(2)}`;
+    }
+
+    const message = `*${building}* ${labels.icon}
 ------------------------------------
 *INVOICE DETAILS*
-• *Tenant*: ${inv.tenantName}
-• *Room No*: Room ${inv.roomNo}
+• *${labels.tenant}*: ${inv.tenantName}
+• *${labels.unitNo}*: ${labels.unit} ${inv.roomNo}
 • *Billing Month*: ${monthName}
 ------------------------------------
 *BILL BREAKDOWN*
-1. *Monthly Room Rent*: ₹${parseFloat(inv.roomRent).toFixed(2)}
-2. *Electricity (Personal)*: ₹${parseFloat(inv.electricityCharge).toFixed(2)}
-   (_Readings: ${inv.previousReading} ➔ ${inv.currentReading} = ${inv.unitsConsumed} Units_)
-3. *Common Electricity*: ₹${parseFloat(inv.commonAreaCharge).toFixed(2)}
+${breakdown}
 ------------------------------------
 💰 *TOTAL AMOUNT DUE: ₹${parseFloat(inv.totalAmount).toFixed(2)}*
 ------------------------------------
@@ -289,7 +338,7 @@ Thank you! 🙏`;
       format: 'a4'
     });
 
-    const building = (pricingSettings.buildingName || "MY BUILDING").toUpperCase();
+    const building = (pricingSettings.buildingName || "MY PROPERTY").toUpperCase();
     const owner = pricingSettings.ownerName || "Property Owner";
     const phone = pricingSettings.ownerPhone || "+91 9999999999";
     const payee = pricingSettings.payeeName || "Owner Name";
@@ -323,15 +372,15 @@ Thank you! 🙏`;
     doc.setTextColor(...dark);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text("TENANT & INVOICE DETAILS", 15, 42);
+    doc.text(`${labels.tenant.toUpperCase()} & INVOICE DETAILS`, 15, 42);
     doc.setDrawColor(226, 232, 240); // slate-200
     doc.setLineWidth(0.3);
     doc.line(15, 44, 195, 44);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Tenant Name: ${inv.tenantName}`, 15, 50);
-    doc.text(`Room Number: Room ${inv.roomNo}`, 120, 50);
+    doc.text(`${labels.tenant} Name: ${inv.tenantName}`, 15, 50);
+    doc.text(`${labels.unitNo}: ${labels.unit} ${inv.roomNo}`, 120, 50);
 
     const monthName = new Date(inv.billingMonth).toLocaleString('default', { month: 'long', year: 'numeric' });
     doc.text(`Billing Month: ${monthName}`, 15, 55);
@@ -365,52 +414,69 @@ Thank you! 🙏`;
     // Table Rows
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text("1. Monthly Base Room Rent", 18, 104);
-    doc.text(`Rs. ${parseFloat(inv.roomRent).toFixed(2)}`, 192, 104, { align: 'right' });
+    let rowY = 104;
 
-    doc.text(`2. Personal Electricity (${inv.unitsConsumed} Units @ Rs. ${parseFloat(inv.unitPrice).toFixed(2)} / Unit)`, 18, 110);
-    doc.text(`Rs. ${parseFloat(inv.electricityCharge).toFixed(2)}`, 192, 110, { align: 'right' });
+    doc.text(`1. Monthly Base ${labels.unit} Rent`, 18, rowY);
+    doc.text(`Rs. ${parseFloat(inv.roomRent).toFixed(2)}`, 192, rowY, { align: 'right' });
+    rowY += 6;
 
-    doc.text("3. Common Area Electricity Share", 18, 116);
-    doc.text(`Rs. ${parseFloat(inv.commonAreaCharge).toFixed(2)}`, 192, 116, { align: 'right' });
+    doc.text(`2. Personal Electricity (${inv.unitsConsumed} Units @ Rs. ${parseFloat(inv.unitPrice).toFixed(2)} / Unit)`, 18, rowY);
+    doc.text(`Rs. ${parseFloat(inv.electricityCharge).toFixed(2)}`, 192, rowY, { align: 'right' });
+    rowY += 6;
+
+    doc.text("3. Common Area Electricity Share", 18, rowY);
+    doc.text(`Rs. ${parseFloat(inv.commonAreaCharge).toFixed(2)}`, 192, rowY, { align: 'right' });
+    rowY += 6;
+
+    let itemNo = 4;
+    if (inv.waterCharge > 0) {
+      doc.text(`${itemNo}. Water Charges`, 18, rowY);
+      doc.text(`Rs. ${parseFloat(inv.waterCharge).toFixed(2)}`, 192, rowY, { align: 'right' });
+      rowY += 6;
+      itemNo++;
+    }
+    if (inv.maintenanceCharge > 0) {
+      doc.text(`${itemNo}. Maintenance / Service Charge`, 18, rowY);
+      doc.text(`Rs. ${parseFloat(inv.maintenanceCharge).toFixed(2)}`, 192, rowY, { align: 'right' });
+      rowY += 6;
+    }
 
     // Total box
     doc.setFillColor(239, 246, 255); // Blue-50
-    doc.rect(15, 122, 180, 9, 'F');
+    doc.rect(15, rowY + 2, 180, 9, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...primary);
     doc.setFontSize(10);
-    doc.text("TOTAL DUE AMOUNT PAYABLE", 18, 127.5);
-    doc.text(`Rs. ${parseFloat(inv.totalAmount).toFixed(2)}`, 192, 127.5, { align: 'right' });
+    doc.text("TOTAL DUE AMOUNT PAYABLE", 18, rowY + 7.5);
+    doc.text(`Rs. ${parseFloat(inv.totalAmount).toFixed(2)}`, 192, rowY + 7.5, { align: 'right' });
 
     // Section: Gateway
+    const gateY = rowY + 18;
     doc.setTextColor(...dark);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.text("DIRECT UPI PAYMENT GATEWAY", 15, 140);
-    doc.line(15, 142, 195, 142);
+    doc.text("DIRECT UPI PAYMENT GATEWAY", 15, gateY);
+    doc.line(15, gateY + 2, 195, gateY + 2);
 
     doc.setFillColor(...light);
-    doc.rect(15, 146, 180, 24, 'F');
+    doc.rect(15, gateY + 6, 180, 24, 'F');
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
-    doc.text(`Payee Receiver: ${payee}`, 18, 152);
+    doc.text(`Payee Receiver: ${payee}`, 18, gateY + 12);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...primary);
-    doc.text(`UPI Payee Address: ${upi}`, 18, 157);
+    doc.text(`UPI Payee Address: ${upi}`, 18, gateY + 17);
     doc.setTextColor(...dark);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.text("Scan the QR code to transfer directly using GPay, PhonePe, Paytm, or BHIM.", 18, 163);
+    doc.text("Scan the QR code to transfer directly using GPay, PhonePe, Paytm, or BHIM.", 18, gateY + 23);
 
     // Dynamic QR Embed
-    // Grab visual QR image from DOM
     const qrImg = document.querySelector("#invoice-bill-print img");
     if (qrImg) {
       try {
-        // Embed the QR Code
-        doc.addImage(qrImg, 'PNG', 163, 147, 21, 21);
+        doc.addImage(qrImg, 'PNG', 163, gateY + 7, 21, 21);
       } catch (e) {
         console.warn("Could not embed QR image onto PDF locally", e);
       }
@@ -420,8 +486,8 @@ Thank you! 🙏`;
     doc.setTextColor(148, 163, 184); // Slate 400
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
-    doc.text("Generated securely via LogicSync Rent • Local PWA System", 105, 180, { align: 'center' });
-    doc.text("This is an offline generated digital receipt. Thank you!", 105, 184, { align: 'center' });
+    doc.text("Generated securely via LogicSync Rent • Universal Property Manager", 105, gateY + 40, { align: 'center' });
+    doc.text("This is an offline generated digital receipt. Thank you!", 105, gateY + 44, { align: 'center' });
 
     return doc;
   };
@@ -431,7 +497,7 @@ Thank you! 🙏`;
     try {
       const doc = generatePDF(inv);
       const blob = doc.output('blob');
-      const filename = `LogicSync_Bill_Room_${inv.roomNo}.pdf`;
+      const filename = `LogicSync_Bill_${labels.unit}_${inv.roomNo}.pdf`;
       const file = new File([blob], filename, { type: 'application/pdf' });
 
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -441,8 +507,8 @@ Thank you! 🙏`;
         
         await navigator.share({
           files: [file],
-          title: `Rent Invoice - Room ${inv.roomNo}`,
-          text: `Dear Tenant, here is the Rent & Utility bill PDF for Room ${inv.roomNo} (${monthName}).\n\n💰 *Total Amount Due: Rs. ${parseFloat(inv.totalAmount).toFixed(2)}*\n⚡ Pay directly via GPay/PhonePe: ${upiUri}\n\nPlease find the detailed PDF receipt attached below. Thank you!`
+          title: `Rent Invoice - ${labels.unit} ${inv.roomNo}`,
+          text: `Dear ${labels.tenant}, here is the Rent & Utility bill PDF for ${labels.unit} ${inv.roomNo} (${monthName}).\n\n💰 *Total Amount Due: Rs. ${parseFloat(inv.totalAmount).toFixed(2)}*\n⚡ Pay directly via GPay/PhonePe: ${upiUri}\n\nPlease find the detailed PDF receipt attached below. Thank you!`
         });
       } else {
         // Fallback for browsers that don't support file sharing (e.g. desktop)
@@ -454,7 +520,7 @@ Thank you! 🙏`;
       alert("Sharing failed. Downloading file as fallback.");
       try {
         const doc = generatePDF(inv);
-        doc.save(`LogicSync_Bill_Room_${inv.roomNo}.pdf`);
+        doc.save(`LogicSync_Bill_${labels.unit}_${inv.roomNo}.pdf`);
       } catch (e) {
         alert("Failed to compile offline PDF.");
       }
@@ -465,7 +531,7 @@ Thank you! 🙏`;
   const handleDownloadPDFOnly = (inv) => {
     try {
       const doc = generatePDF(inv);
-      doc.save(`LogicSync_Bill_Room_${inv.roomNo}.pdf`);
+      doc.save(`LogicSync_Bill_${labels.unit}_${inv.roomNo}.pdf`);
     } catch (err) {
       alert("Failed to download PDF offline.");
     }
@@ -486,7 +552,7 @@ Thank you! 🙏`;
   };
 
   const handleResetProfile = () => {
-    if (!window.confirm("Are you sure you want to reset your LogicSync Rent profile? This will completely ERASE all registered tenants, utility readings, invoices, outstanding dues, and settings, returning you to a clean onboarding screen.")) return;
+    if (!window.confirm("Are you sure you want to reset your LogicSync Rent profile? This will completely ERASE all registered occupants, utility readings, invoices, outstanding dues, and settings, returning you to a clean onboarding screen.")) return;
     
     // Clear databases
     localStorage.setItem('rm_onboarded', 'false');
@@ -498,6 +564,11 @@ Thank you! 🙏`;
       upiId: "",
       roomRent: 5000,
       unitPrice: 10.0,
+      waterRate: 0,
+      maintenanceCharge: 0,
+      enableWaterBilling: false,
+      enableMaintenance: false,
+      propertyType: "apartment",
       effectiveFrom: new Date().toISOString().split('T')[0]
     }));
     localStorage.setItem('rm_tenants', JSON.stringify([]));
@@ -513,11 +584,17 @@ Thank you! 🙏`;
       upiId: '',
       roomRent: '',
       unitPrice: '',
+      waterRate: '',
+      maintenanceCharge: '',
+      enableWaterBilling: false,
+      enableMaintenance: false,
+      propertyType: 'apartment',
       effectiveFrom: ''
     });
     setTenants([]);
     setMonthlyInvoices([]);
     setIsOnboarded(false);
+    setOnboardingStep(1);
     
     alert("Application data wiped successfully! Welcome to your new clean slate.");
   };
@@ -532,14 +609,17 @@ Thank you! 🙏`;
       </div>
     `;
     window.print();
+    document.body.innerHTML = originalContent;
     window.location.reload();
   };
 
-  // Helper Stats Calculations
+  // Computed Metrics
   const totalRevenue = monthlyInvoices.reduce((sum, inv) => sum + parseFloat(inv.totalAmount), 0);
   const paidRevenue = monthlyInvoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + parseFloat(inv.totalAmount), 0);
   const pendingDues = monthlyInvoices.filter(inv => inv.status !== 'PAID').reduce((sum, inv) => sum + parseFloat(inv.totalAmount), 0);
   const activeTenantsCount = tenants.filter(t => t.active).length;
+  const totalTenantsCount = tenants.length;
+  const occupancyRate = totalTenantsCount > 0 ? Math.round((activeTenantsCount / totalTenantsCount) * 100) : 0;
 
   const handleTogglePaymentStatus = async (id, currentStatus) => {
     try {
@@ -588,125 +668,200 @@ Thank you! 🙏`;
     reader.readAsText(file);
   };
 
+  // ========================================================================================
+  // RENDER
+  // ========================================================================================
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center font-sans sm:py-6 select-none bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(37,99,235,0.15),rgba(255,255,255,0))]">
       
       {/* Physical Mobile Frame Mockup (Only renders on Desktop, full screen on Mobile) */}
-      <div className={`w-full min-h-screen sm:min-h-[820px] sm:max-h-[820px] sm:max-w-md sm:rounded-[40px] sm:border-[10px] sm:border-slate-800 sm:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-slate-900 text-slate-100 flex flex-col relative overflow-hidden transition-all duration-300 ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
+      <div className={`w-full min-h-screen sm:min-h-[820px] sm:max-h-[820px] sm:max-w-md sm:rounded-[40px] sm:border-[10px] sm:border-slate-800 sm:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-slate-900 text-slate-100 flex flex-col relative overflow-hidden ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
         
         {!isOnboarded ? (
-          /* ONBOARDING SETUP FLOW - Safe area optimized */
+          /* ========================================================================================
+             ONBOARDING SETUP FLOW
+             ======================================================================================== */
           <div className="flex-1 flex flex-col p-6 pt-[calc(24px+env(safe-area-inset-top,16px))] pb-[calc(24px+env(safe-area-inset-bottom,16px))] justify-between overflow-y-auto bg-slate-950/20 backdrop-blur-sm animate-fadeIn">
             <div className="space-y-6">
               
               {/* App Logo & Welcome */}
-              <div className="text-center pt-6 space-y-3">
+              <div className="text-center pt-4 space-y-3">
                 <div className="mx-auto w-20 h-20 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center shadow-xl shadow-blue-500/5 overflow-hidden">
                   <img src="logisync_rent_logo.png" alt="LogicSync Logo" className="w-16 h-16 object-contain" />
                 </div>
                 <div>
                   <h2 className="text-xl font-black tracking-tight text-slate-100">LogicSync Rent</h2>
-                  <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">Universal Onboarding Wizard</p>
+                  <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">Universal Property Manager</p>
                 </div>
               </div>
 
-              {/* Form card */}
-              <div className="bg-slate-900 border border-slate-850 p-5 rounded-2xl space-y-4 shadow-xl">
-                <h3 className="text-xs font-black text-slate-300 uppercase tracking-widest border-b border-slate-850 pb-2 flex items-center">
-                  <Settings size={12} className="text-blue-500 mr-1.5" /> Initialize Landlord Hub
-                </h3>
-                
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Property / Building Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Sunrise Apartments"
-                      value={pricingSettings.buildingName || ''} 
-                      onChange={e => setPricingSettings({...pricingSettings, buildingName: e.target.value})} 
-                      className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                    />
+              {onboardingStep === 1 ? (
+                /* STEP 1: Property Type Selector */
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="text-center">
+                    <h3 className="text-sm font-black text-slate-200 uppercase tracking-wider">What type of property do you manage?</h3>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">This customizes the entire app experience for your needs</p>
                   </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Landlord / Owner Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. John Doe"
-                      value={pricingSettings.ownerName || ''} 
-                      onChange={e => setPricingSettings({...pricingSettings, ownerName: e.target.value})} 
-                      className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Contact Phone (WhatsApp)</label>
-                      <input 
-                        type="text" 
-                        placeholder="+91 9999999999"
-                        value={pricingSettings.ownerPhone || ''} 
-                        onChange={e => setPricingSettings({...pricingSettings, ownerPhone: e.target.value})} 
-                        className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">UPI Payee Display Name</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. Jane Doe"
-                        value={pricingSettings.payeeName || ''} 
-                        onChange={e => setPricingSettings({...pricingSettings, payeeName: e.target.value})} 
-                        className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">UPI ID for Direct QR payments</label>
-                    <input 
-                      type="text" 
-                      placeholder="landlord@upi"
-                      value={pricingSettings.upiId || ''} 
-                      onChange={e => setPricingSettings({...pricingSettings, upiId: e.target.value})} 
-                      className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 border-t border-slate-850 pt-3 mt-1">
-                    <div>
-                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Monthly Room Rent (₹)</label>
-                      <input 
-                        type="number" 
-                        placeholder="5000"
-                        value={pricingSettings.roomRent || ''} 
-                        onChange={e => setPricingSettings({...pricingSettings, roomRent: e.target.value})} 
-                        className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Electricity/Unit (₹)</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        placeholder="10.50"
-                        value={pricingSettings.unitPrice || ''} 
-                        onChange={e => setPricingSettings({...pricingSettings, unitPrice: e.target.value})} 
-                        className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
+
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {Object.values(PROPERTY_TYPES).map((pt) => (
+                      <button
+                        key={pt.id}
+                        onClick={() => {
+                          setPricingSettings({...pricingSettings, propertyType: pt.id});
+                        }}
+                        className={`p-4 rounded-2xl border flex items-center space-x-4 transition-all duration-200 text-left ${
+                          pricingSettings.propertyType === pt.id 
+                            ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/10' 
+                            : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
+                          pricingSettings.propertyType === pt.id ? 'bg-blue-600/20' : 'bg-slate-900'
+                        }`}>
+                          {pt.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className={`text-sm font-black ${pricingSettings.propertyType === pt.id ? 'text-blue-400' : 'text-slate-200'}`}>
+                            {pt.name}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">{pt.description}</p>
+                        </div>
+                        {pricingSettings.propertyType === pt.id && (
+                          <Check size={18} className="text-blue-400 shrink-0" />
+                        )}
+                      </button>
+                    ))}
                   </div>
                 </div>
+              ) : (
+                /* STEP 2: Details Form */
+                <div className="space-y-4 animate-fadeIn">
+                  <button 
+                    onClick={() => setOnboardingStep(1)}
+                    className="text-[10px] font-bold text-blue-400 uppercase tracking-wider flex items-center hover:text-blue-300 transition"
+                  >
+                    ← Back to Property Type
+                  </button>
 
-              </div>
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center space-x-3">
+                    <span className="text-xl">{labels.icon}</span>
+                    <div>
+                      <span className="text-xs font-black text-blue-400">{labels.name}</span>
+                      <span className="text-[9px] text-slate-500 block font-medium">Selected property type</span>
+                    </div>
+                  </div>
 
+                  {/* Form card */}
+                  <div className="bg-slate-900 border border-slate-850 p-5 rounded-2xl space-y-4 shadow-xl">
+                    <h3 className="text-xs font-black text-slate-300 uppercase tracking-widest border-b border-slate-850 pb-2 flex items-center">
+                      <Settings size={12} className="text-blue-500 mr-1.5" /> Setup {labels.property} Profile
+                    </h3>
+                    
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">{labels.property} Name</label>
+                        <input 
+                          type="text" 
+                          placeholder={`e.g. ${labels.property === 'Building' ? 'Sunrise Apartments' : labels.property === 'Hostel' ? 'Green Stay PG' : labels.property === 'Complex' ? 'Central Market' : labels.property === 'Space' ? 'Hub Cowork' : 'Palm Villa'}`}
+                          value={pricingSettings.buildingName || ''} 
+                          onChange={e => setPricingSettings({...pricingSettings, buildingName: e.target.value})} 
+                          className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Owner / Manager Name</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. John Doe"
+                          value={pricingSettings.ownerName || ''} 
+                          onChange={e => setPricingSettings({...pricingSettings, ownerName: e.target.value})} 
+                          className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Contact Phone</label>
+                          <input 
+                            type="text" 
+                            placeholder="+91 9999999999"
+                            value={pricingSettings.ownerPhone || ''} 
+                            onChange={e => setPricingSettings({...pricingSettings, ownerPhone: e.target.value})} 
+                            className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">UPI Payee Name</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Jane Doe"
+                            value={pricingSettings.payeeName || ''} 
+                            onChange={e => setPricingSettings({...pricingSettings, payeeName: e.target.value})} 
+                            className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">UPI ID for Direct QR Payments</label>
+                        <input 
+                          type="text" 
+                          placeholder="owner@upi"
+                          value={pricingSettings.upiId || ''} 
+                          onChange={e => setPricingSettings({...pricingSettings, upiId: e.target.value})} 
+                          className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 border-t border-slate-850 pt-3 mt-1">
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Monthly {labels.unit} Rent (₹)</label>
+                          <input 
+                            type="number" 
+                            placeholder="5000"
+                            value={pricingSettings.roomRent || ''} 
+                            onChange={e => setPricingSettings({...pricingSettings, roomRent: e.target.value})} 
+                            className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Electricity/Unit (₹)</label>
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            placeholder="10.50"
+                            value={pricingSettings.unitPrice || ''} 
+                            onChange={e => setPricingSettings({...pricingSettings, unitPrice: e.target.value})} 
+                            className="w-full bg-slate-950 border border-slate-850 p-3 rounded-xl font-bold text-slate-100 focus:outline-none focus:border-blue-500" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
             </div>
 
-            <button 
-              onClick={handleCompleteOnboarding}
-              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/10 transition mt-6"
-            >
-              Launch My Dashboard
-            </button>
+            {onboardingStep === 1 ? (
+              <button 
+                onClick={() => setOnboardingStep(2)}
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/10 transition mt-6 flex items-center justify-center"
+              >
+                Continue Setup <ChevronRight size={16} className="ml-1" />
+              </button>
+            ) : (
+              <button 
+                onClick={handleCompleteOnboarding}
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/10 transition mt-6"
+              >
+                Launch My Dashboard
+              </button>
+            )}
           </div>
         ) : (
-          /* REGULAR MAIN APPLICATION CONTAINER */
+          /* ========================================================================================
+             REGULAR MAIN APPLICATION CONTAINER
+             ======================================================================================== */
           <>
             {/* MOBILE APPLICATION HEADER - Safe area padded */}
             <header className="bg-slate-950 px-4 pt-[calc(16px+env(safe-area-inset-top,16px))] pb-4 sm:pt-4 border-b border-slate-850 flex justify-between items-center sticky top-0 z-40 backdrop-blur-md bg-opacity-90 shrink-0">
@@ -716,7 +871,7 @@ Thank you! 🙏`;
                 </h2>
                 <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider flex items-center mt-0.5">
                   <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${storageMode === 'local' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500 animate-pulse'}`}></span>
-                  🏢 {pricingSettings.buildingName || "My Heights"}
+                  {labels.icon} {pricingSettings.buildingName || "My Property"}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -748,7 +903,7 @@ Thank you! 🙏`;
             <div className="flex flex-col md:flex-row justify-between md:items-center space-y-4 md:space-y-0">
               <div>
                 <h3 className="text-2xl font-black tracking-tight text-slate-100">Management Dashboard</h3>
-                <p className="text-slate-400 text-xs font-semibold">Real-time metrics & billing scheduler</p>
+                <p className="text-slate-400 text-xs font-semibold">Real-time metrics & billing scheduler • {labels.name}</p>
               </div>
               <div className="flex space-x-2">
                 <input 
@@ -761,26 +916,26 @@ Thank you! 🙏`;
             </div>
 
             {/* Quick Metrics Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between">
                 <span className="text-[10px] uppercase font-black text-amber-500 tracking-wider">Pending Dues</span>
                 <span className="text-xl font-black text-amber-500 mt-2">₹{pendingDues.toFixed(0)}</span>
                 <span className="text-[9px] font-semibold text-slate-500 italic mt-1">Paid: ₹{paidRevenue.toFixed(0)}</span>
               </div>
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between">
-                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Active Tenants</span>
+                <span className="text-[10px] uppercase font-black text-emerald-400 tracking-wider">Total Revenue</span>
+                <span className="text-xl font-black text-emerald-400 mt-2">₹{totalRevenue.toFixed(0)}</span>
+                <span className="text-[9px] font-semibold text-slate-500 italic mt-1">{monthlyInvoices.length} invoices</span>
+              </div>
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between">
+                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Active {labels.tenants}</span>
                 <span className="text-xl font-black text-slate-200 mt-2">{activeTenantsCount}</span>
-                <span className="text-[9px] font-semibold text-slate-500 italic mt-1">Rooms active</span>
+                <span className="text-[9px] font-semibold text-slate-500 italic mt-1">{labels.units} occupied</span>
               </div>
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between">
-                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Electricity Rate</span>
-                <span className="text-xl font-black text-blue-400 mt-2">₹{parseFloat(pricingSettings.unitPrice || 0).toFixed(2)}</span>
-                <span className="text-[9px] font-semibold text-slate-500 italic mt-1">Per consumed unit</span>
-              </div>
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col justify-between">
-                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Room Rent Policy</span>
+                <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">{labels.unit} Rent</span>
                 <span className="text-xl font-black text-indigo-400 mt-2">₹{parseFloat(pricingSettings.roomRent || 0).toFixed(0)}</span>
-                <span className="text-[9px] font-semibold text-slate-500 italic mt-1">Monthly base rent</span>
+                <span className="text-[9px] font-semibold text-slate-500 italic mt-1">@₹{parseFloat(pricingSettings.unitPrice || 0).toFixed(1)}/unit</span>
               </div>
             </div>
 
@@ -791,7 +946,7 @@ Thank you! 🙏`;
               </div>
               <h4 className="font-black text-base text-blue-400 uppercase tracking-widest text-xs">Run Bulk Monthly Billing</h4>
               <p className="text-slate-300 text-xs mt-1 max-w-md font-medium">
-                Generates digital invoices for all active tenants for <span className="font-bold text-white underline">{month}</span>. Make sure all meter readings are saved first!
+                Generates digital invoices for all active {labels.tenants.toLowerCase()} for <span className="font-bold text-white underline">{month}</span>. Make sure all meter readings are saved first!
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
@@ -829,7 +984,7 @@ Thank you! 🙏`;
                   </div>
                 </div>
                 <button onClick={() => setActiveTab("settings")} className="text-[9px] font-black uppercase tracking-widest text-blue-500 hover:underline">
-                  Cloud Setup
+                  Cloud
                 </button>
               </div>
             )}
@@ -847,7 +1002,7 @@ Thank you! 🙏`;
                     <div>
                       <h6 className="font-bold text-sm text-slate-200">{inv.tenantName}</h6>
                       <div className="flex items-center space-x-2 text-[10px] text-slate-400 font-bold mt-1">
-                        <span className="text-blue-500">Room {inv.roomNo}</span>
+                        <span className="text-blue-500">{labels.unit} {inv.roomNo}</span>
                         <span>•</span>
                         <span>₹{inv.totalAmount.toFixed(0)}</span>
                       </div>
@@ -875,8 +1030,8 @@ Thank you! 🙏`;
           <div className="space-y-6 animate-fadeIn">
             <div className="flex justify-between items-center">
               <div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-100">Tenants Register</h3>
-                <p className="text-slate-400 text-xs font-semibold">Manage building residents & details</p>
+                <h3 className="text-2xl font-black tracking-tight text-slate-100">{labels.tenants} Register</h3>
+                <p className="text-slate-400 text-xs font-semibold">Manage {labels.property.toLowerCase()} {labels.tenants.toLowerCase()} & details</p>
               </div>
               <button 
                 onClick={() => setShowTenantModal(true)} 
@@ -898,7 +1053,7 @@ Thank you! 🙏`;
                           {t.active ? 'Active' : 'Inactive'}
                         </span>
                       </div>
-                      <p className="text-xs font-bold text-blue-500 mt-1">Room {t.roomNo} • Meter ID: {t.meterId || 'N/A'}</p>
+                      <p className="text-xs font-bold text-blue-500 mt-1">{labels.unit} {t.roomNo} • Meter: {t.meterId || 'N/A'}</p>
                     </div>
                     
                     {/* Delete Icon */}
@@ -915,7 +1070,8 @@ Thank you! 🙏`;
                       <Phone size={10} className="text-slate-500" />
                       <span>{t.phoneNo}</span>
                     </div>
-                    {t.aadharNo && <div className="text-slate-500">Aadhar: {t.aadharNo}</div>}
+                    {t.aadharNo && <div className="text-slate-500">ID: {t.aadharNo}</div>}
+                    {t.customRent && <div className="text-indigo-400">Custom Rent: ₹{t.customRent}</div>}
                     <div className="flex items-center space-x-1">
                       <Calendar size={10} className="text-slate-500" />
                       <span>Joined: {t.joiningDate}</span>
@@ -944,7 +1100,7 @@ Thank you! 🙏`;
                         onClick={() => handleToggleTenant(t.id, true)} 
                         className="w-full bg-slate-900 border border-slate-800 text-slate-300 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-slate-800 hover:text-emerald-400 hover:border-emerald-500/20 transition"
                       >
-                        Re-Activate Tenant
+                        Re-Activate {labels.tenant}
                       </button>
                     )}
                   </div>
@@ -952,7 +1108,7 @@ Thank you! 🙏`;
               ))}
               {tenants.length === 0 && (
                 <div className="col-span-full py-16 text-center bg-slate-950 border border-slate-850 rounded-2xl text-slate-500 italic text-sm font-semibold">
-                  No tenants registered in the system. Tap Register to add one!
+                  No {labels.tenants.toLowerCase()} registered in the system. Tap Register to add one!
                 </div>
               )}
             </div>
@@ -964,13 +1120,13 @@ Thank you! 🙏`;
           <div className="space-y-6 animate-fadeIn">
             <div>
               <h3 className="text-2xl font-black tracking-tight text-slate-100">Meter Utilities</h3>
-              <p className="text-slate-400 text-xs font-semibold">Record personal water/electricity readings for {month}</p>
+              <p className="text-slate-400 text-xs font-semibold">Record electricity readings for {month}</p>
             </div>
 
             {/* Active Tenants Readings Grid */}
             <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden">
               <div className="p-4 border-b border-slate-900 font-black text-slate-200 text-xs tracking-wider flex justify-between bg-slate-950/70">
-                <span>Select tenant to insert reading</span>
+                <span>Select {labels.tenant.toLowerCase()} to insert reading</span>
                 <span className="text-[10px] text-slate-500 italic uppercase">Month: {month}</span>
               </div>
               
@@ -979,7 +1135,7 @@ Thank you! 🙏`;
                   <div key={t.id} className="p-4 hover:bg-slate-900/40 transition flex justify-between items-center">
                     <div>
                       <h4 className="font-bold text-sm text-slate-200">{t.name}</h4>
-                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Room {t.roomNo} • Meter ID: {t.meterId || 'N/A'}</p>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">{labels.unit} {t.roomNo} • Meter: {t.meterId || 'N/A'}</p>
                     </div>
                     <button 
                       onClick={() => openReadingModal(t)} 
@@ -991,7 +1147,7 @@ Thank you! 🙏`;
                 ))}
                 {tenants.filter(t => t.active).length === 0 && (
                   <div className="p-12 text-center text-slate-500 italic text-xs font-bold">
-                    No active tenants registered in the system. Add active tenants first.
+                    No active {labels.tenants.toLowerCase()} registered. Add active {labels.tenants.toLowerCase()} first.
                   </div>
                 )}
               </div>
@@ -1011,7 +1167,7 @@ Thank you! 🙏`;
                 onClick={() => window.print()} 
                 className="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 text-slate-300 text-xs font-black uppercase px-4 py-2.5 rounded-xl hover:bg-slate-900 transition"
               >
-                <Download size={14} /> <span>Print Page</span>
+                <Download size={14} /> <span>Print</span>
               </button>
             </div>
 
@@ -1022,7 +1178,7 @@ Thank you! 🙏`;
                   <div className="flex-1 min-w-0 pr-4">
                     <div className="flex items-center space-x-2">
                       <h4 className="font-bold text-sm text-slate-200 truncate">{inv.tenantName}</h4>
-                      <span className="text-[10px] text-blue-500 font-bold bg-blue-500/10 px-2 py-0.5 rounded-md">Room {inv.roomNo}</span>
+                      <span className="text-[10px] text-blue-500 font-bold bg-blue-500/10 px-2 py-0.5 rounded-md">{labels.unit} {inv.roomNo}</span>
                     </div>
                     <div className="flex items-center space-x-3 text-[10px] text-slate-400 font-bold mt-1.5">
                       <span>Rent: ₹{inv.roomRent}</span>
@@ -1082,7 +1238,33 @@ Thank you! 🙏`;
           <div className="space-y-6 animate-fadeIn">
             <div>
               <h3 className="text-2xl font-black tracking-tight text-slate-100">App Configurations</h3>
-              <p className="text-slate-400 text-xs font-semibold">Customize storage drivers, building details, and pricing</p>
+              <p className="text-slate-400 text-xs font-semibold">Customize storage, {labels.property.toLowerCase()} details, and pricing</p>
+            </div>
+
+            {/* 0. Property Type Selector */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <h4 className="font-black text-sm text-slate-200 flex items-center">
+                <PropertyTypeIcon type={pricingSettings.propertyType} size={16} className="text-blue-500 mr-2" /> Property Type
+              </h4>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Changing property type updates all labels throughout the app ({labels.tenant}, {labels.unit}, {labels.property}).
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Object.values(PROPERTY_TYPES).map((pt) => (
+                  <button
+                    key={pt.id}
+                    onClick={() => setPricingSettings({...pricingSettings, propertyType: pt.id})}
+                    className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center transition ${
+                      pricingSettings.propertyType === pt.id 
+                        ? 'bg-blue-600/10 border-blue-500 text-white shadow-xl' 
+                        : 'bg-slate-900/50 border-slate-850 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-xl mb-1">{pt.icon}</span>
+                    <span className="text-[9px] font-black uppercase">{pt.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 1. Storage Integration Driver Selection */}
@@ -1139,12 +1321,12 @@ Thank you! 🙏`;
             {/* 2. Building & Payment details configuration */}
             <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-5">
               <h4 className="font-black text-sm text-slate-200 flex items-center">
-                <CreditCard className="text-emerald-400 mr-2" size={16} /> Building & UPI Billing Profile
+                <CreditCard className="text-emerald-400 mr-2" size={16} /> {labels.property} & UPI Billing Profile
               </h4>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Building/Heights Name</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">{labels.property} Name</label>
                   <input 
                     type="text" 
                     value={pricingSettings.buildingName || ''} 
@@ -1162,7 +1344,7 @@ Thank you! 🙏`;
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Owner Contact Name</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Owner / Manager Name</label>
                   <input 
                     type="text" 
                     value={pricingSettings.ownerName || ''} 
@@ -1199,7 +1381,7 @@ Thank you! 🙏`;
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Room Monthly Rent (₹)</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Monthly {labels.unit} Rent (₹)</label>
                   <input 
                     type="number" 
                     value={pricingSettings.roomRent || ''} 
@@ -1226,6 +1408,63 @@ Thank you! 🙏`;
                     className="w-full bg-slate-900 border border-slate-850 p-3 rounded-xl font-bold text-xs text-slate-200 focus:outline-none" 
                   />
                 </div>
+              </div>
+
+              {/* Optional Charges */}
+              <div className="space-y-4 border-t border-slate-800 pt-4">
+                <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-wider">Optional Charges</h5>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Droplets size={14} className="text-cyan-400" />
+                    <span className="text-xs font-bold text-slate-300">Water Billing</span>
+                  </div>
+                  <button
+                    onClick={() => setPricingSettings({...pricingSettings, enableWaterBilling: !pricingSettings.enableWaterBilling})}
+                    className={`w-11 h-6 rounded-full transition-colors duration-200 flex items-center px-0.5 ${pricingSettings.enableWaterBilling ? 'bg-blue-600' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${pricingSettings.enableWaterBilling ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                {pricingSettings.enableWaterBilling && (
+                  <div className="animate-fadeIn">
+                    <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Monthly Water Charge (₹)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      placeholder="200"
+                      value={pricingSettings.waterRate || ''} 
+                      onChange={e => setPricingSettings({...pricingSettings, waterRate: e.target.value})} 
+                      className="w-full bg-slate-900 border border-slate-850 p-3 rounded-xl font-bold text-xs text-slate-200 focus:outline-none" 
+                    />
+                  </div>
+                )}
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Wrench size={14} className="text-orange-400" />
+                    <span className="text-xs font-bold text-slate-300">Maintenance Charge</span>
+                  </div>
+                  <button
+                    onClick={() => setPricingSettings({...pricingSettings, enableMaintenance: !pricingSettings.enableMaintenance})}
+                    className={`w-11 h-6 rounded-full transition-colors duration-200 flex items-center px-0.5 ${pricingSettings.enableMaintenance ? 'bg-blue-600' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${pricingSettings.enableMaintenance ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                {pricingSettings.enableMaintenance && (
+                  <div className="animate-fadeIn">
+                    <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Monthly Maintenance (₹)</label>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      placeholder="500"
+                      value={pricingSettings.maintenanceCharge || ''} 
+                      onChange={e => setPricingSettings({...pricingSettings, maintenanceCharge: e.target.value})} 
+                      className="w-full bg-slate-900 border border-slate-850 p-3 rounded-xl font-bold text-xs text-slate-200 focus:outline-none" 
+                    />
+                  </div>
+                )}
               </div>
 
               <button 
@@ -1286,10 +1525,10 @@ Thank you! 🙏`;
       </main>
 
       {/* PERSISTENT FLOATING BOTTOM NAVIGATION BAR */}
-      <nav className="fixed sm:absolute bottom-4 left-4 right-4 z-40 bg-slate-950/80 backdrop-blur-xl border border-slate-850 rounded-2xl flex justify-around items-center p-3 shadow-[0_10px_35px_rgba(0,0,0,0.7)] pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
+      <nav className="fixed sm:absolute bottom-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-t border-slate-850 flex justify-around items-center p-3 shadow-[0_-10px_35px_rgba(0,0,0,0.3)] pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
         <button 
           onClick={() => setActiveTab("dashboard")} 
-          className={`flex flex-col items-center space-y-1 ${activeTab === 'dashboard' ? 'text-blue-500 animate-pulseFast' : 'text-slate-500'}`}
+          className={`flex flex-col items-center space-y-1 ${activeTab === 'dashboard' ? 'text-blue-500' : 'text-slate-500'}`}
         >
           <LayoutDashboard size={18} />
           <span className="text-[8px] font-black uppercase">Home</span>
@@ -1297,15 +1536,15 @@ Thank you! 🙏`;
 
         <button 
           onClick={() => setActiveTab("tenants")} 
-          className={`flex flex-col items-center space-y-1 ${activeTab === 'tenants' ? 'text-blue-500 animate-pulseFast' : 'text-slate-500'}`}
+          className={`flex flex-col items-center space-y-1 ${activeTab === 'tenants' ? 'text-blue-500' : 'text-slate-500'}`}
         >
           <Users size={18} />
-          <span className="text-[8px] font-black uppercase">Tenants</span>
+          <span className="text-[8px] font-black uppercase">{labels.tenants}</span>
         </button>
 
         <button 
           onClick={() => setActiveTab("readings")} 
-          className={`flex flex-col items-center space-y-1 ${activeTab === 'readings' ? 'text-blue-500 animate-pulseFast' : 'text-slate-500'}`}
+          className={`flex flex-col items-center space-y-1 ${activeTab === 'readings' ? 'text-blue-500' : 'text-slate-500'}`}
         >
           <Zap size={18} />
           <span className="text-[8px] font-black uppercase">Readings</span>
@@ -1313,7 +1552,7 @@ Thank you! 🙏`;
 
         <button 
           onClick={() => setActiveTab("invoices")} 
-          className={`flex flex-col items-center space-y-1 ${activeTab === 'invoices' ? 'text-blue-500 animate-pulseFast' : 'text-slate-500'}`}
+          className={`flex flex-col items-center space-y-1 ${activeTab === 'invoices' ? 'text-blue-500' : 'text-slate-500'}`}
         >
           <FileText size={18} />
           <span className="text-[8px] font-black uppercase">Bills</span>
@@ -1323,24 +1562,25 @@ Thank you! 🙏`;
       {/* MODAL SHEET: REGISTER TENANT */}
       {showTenantModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative animate-scaleIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative animate-scaleIn max-h-[90vh] overflow-y-auto">
             <button onClick={() => setShowTenantModal(false)} className="absolute right-4 top-4 text-slate-500 hover:text-slate-300 p-1 bg-slate-950 rounded-lg">
               <X size={16} />
             </button>
-            <h3 className="text-lg font-black tracking-tight mb-4">Register Tenant Room</h3>
+            <h3 className="text-lg font-black tracking-tight mb-1">{labels.register}</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-4">Add a new {labels.tenant.toLowerCase()} to your {labels.property.toLowerCase()}</p>
             
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="col-span-2">
                 <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Full Name</label>
                 <input 
-                  placeholder="e.g. Sneha Patil" 
+                  placeholder={`e.g. ${labels.tenant === 'Guest' ? 'Rahul Sharma' : labels.tenant === 'Member' ? 'Priya Verma' : 'Sneha Patil'}`}
                   className="w-full p-3 bg-slate-950 border border-slate-850 rounded-xl font-bold text-xs text-slate-100" 
                   value={newTenant.name}
                   onChange={e => setNewTenant({...newTenant, name: e.target.value})} 
                 />
               </div>
               <div>
-                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Room No</label>
+                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">{labels.unitNo}</label>
                 <input 
                   placeholder="101" 
                   className="w-full p-3 bg-slate-950 border border-slate-850 rounded-xl font-bold text-xs text-slate-100" 
@@ -1367,7 +1607,7 @@ Thank you! 🙏`;
                 />
               </div>
               <div>
-                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Aadhar ID (Optional)</label>
+                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">ID / Aadhar (Optional)</label>
                 <input 
                   placeholder="1234-5678-9012" 
                   className="w-full p-3 bg-slate-950 border border-slate-850 rounded-xl font-bold text-xs text-slate-100" 
@@ -1375,7 +1615,17 @@ Thank you! 🙏`;
                   onChange={e => setNewTenant({...newTenant, aadharNo: e.target.value})} 
                 />
               </div>
-              <div className="col-span-2">
+              <div>
+                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Custom Rent (Optional ₹)</label>
+                <input 
+                  type="number"
+                  placeholder="Leave blank for default"
+                  className="w-full p-3 bg-slate-950 border border-slate-850 rounded-xl font-bold text-xs text-slate-100" 
+                  value={newTenant.customRent}
+                  onChange={e => setNewTenant({...newTenant, customRent: e.target.value})} 
+                />
+              </div>
+              <div>
                 <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Joining Date</label>
                 <input 
                   type="date"
@@ -1390,7 +1640,7 @@ Thank you! 🙏`;
               onClick={handleAddTenant} 
               className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-blue-600/10 hover:bg-blue-700 transition"
             >
-              Verify & Save Tenant
+              Verify & Save {labels.tenant}
             </button>
           </div>
         </div>
@@ -1405,7 +1655,7 @@ Thank you! 🙏`;
             </button>
             
             <h3 className="text-lg font-black tracking-tight">Record Meter Reading</h3>
-            <p className="text-[10px] text-blue-500 uppercase font-black tracking-wider mt-1 mb-6">Room {selectedTenant.roomNo} • {selectedTenant.name}</p>
+            <p className="text-[10px] text-blue-500 uppercase font-black tracking-wider mt-1 mb-6">{labels.unit} {selectedTenant.roomNo} • {selectedTenant.name}</p>
             
             <div className="space-y-4 mb-6">
               <div>
@@ -1432,7 +1682,7 @@ Thank you! 🙏`;
 
             <button 
               onClick={handleSaveReading} 
-              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-blue-600/10 hover:bg-blue-700 transition animate-pulseFast"
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-blue-600/10 hover:bg-blue-700 transition"
             >
               Commit Utilities Reading
             </button>
@@ -1478,10 +1728,10 @@ Thank you! 🙏`;
               {/* Receipt Header */}
               <div className="text-center pb-4 border-b border-slate-900">
                 <h4 className="font-black text-lg text-slate-100 tracking-wide uppercase italic">
-                  {pricingSettings.buildingName || "MY BUILDING"}
+                  {pricingSettings.buildingName || "MY PROPERTY"}
                 </h4>
                 <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
-                  Owner: {pricingSettings.ownerName || "Landlord"} | Contact: {pricingSettings.ownerPhone || "+91 9999999999"}
+                  Owner: {pricingSettings.ownerName || "Owner"} | Contact: {pricingSettings.ownerPhone || "+91 9999999999"}
                 </p>
                 <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mt-2">
                   Utility & Rent Receipt
@@ -1491,12 +1741,12 @@ Thank you! 🙏`;
               {/* Invoice Meta */}
               <div className="grid grid-cols-2 gap-4 text-xs font-bold uppercase tracking-wider text-slate-400 pb-4 border-b border-slate-900">
                 <div>
-                  <span className="text-[8px] text-slate-500 block mb-0.5">Tenant Details</span>
+                  <span className="text-[8px] text-slate-500 block mb-0.5">{labels.tenant} Details</span>
                   <span className="text-slate-200 font-black">{selectedInvoice.tenantName}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[8px] text-slate-500 block mb-0.5">Room & Meter</span>
-                  <span className="text-blue-400 font-black">Room {selectedInvoice.roomNo}</span>
+                  <span className="text-[8px] text-slate-500 block mb-0.5">{labels.unit} & Meter</span>
+                  <span className="text-blue-400 font-black">{labels.unit} {selectedInvoice.roomNo}</span>
                 </div>
                 <div>
                   <span className="text-[8px] text-slate-500 block mb-0.5">Billing Month</span>
@@ -1534,17 +1784,29 @@ Thank you! 🙏`;
                 <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Billing Particulars</span>
                 
                 <div className="flex justify-between items-center text-xs font-bold py-1">
-                  <span className="text-slate-400">Monthly Room Rent</span>
+                  <span className="text-slate-400">Monthly {labels.unit} Rent</span>
                   <span className="text-slate-200">₹{parseFloat(selectedInvoice.roomRent).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs font-bold py-1 border-t border-slate-900/50">
-                  <span className="text-slate-400">Personal Electricity Consumption</span>
+                  <span className="text-slate-400">Personal Electricity</span>
                   <span className="text-slate-200">₹{parseFloat(selectedInvoice.electricityCharge).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs font-bold py-1 border-t border-slate-900/50">
-                  <span className="text-slate-400">Common Area Electricity Share</span>
+                  <span className="text-slate-400">Common Area Electricity</span>
                   <span className="text-slate-200">₹{parseFloat(selectedInvoice.commonAreaCharge).toFixed(2)}</span>
                 </div>
+                {(selectedInvoice.waterCharge > 0) && (
+                  <div className="flex justify-between items-center text-xs font-bold py-1 border-t border-slate-900/50">
+                    <span className="text-slate-400">Water Charges</span>
+                    <span className="text-slate-200">₹{parseFloat(selectedInvoice.waterCharge).toFixed(2)}</span>
+                  </div>
+                )}
+                {(selectedInvoice.maintenanceCharge > 0) && (
+                  <div className="flex justify-between items-center text-xs font-bold py-1 border-t border-slate-900/50">
+                    <span className="text-slate-400">Maintenance / Service</span>
+                    <span className="text-slate-200">₹{parseFloat(selectedInvoice.maintenanceCharge).toFixed(2)}</span>
+                  </div>
+                )}
                 
                 <div className="flex justify-between items-center text-sm font-black p-3 bg-slate-900 border border-slate-900 rounded-xl mt-4">
                   <span className="text-slate-300 uppercase tracking-wider text-xs">Total Amount Payable</span>
@@ -1556,8 +1818,8 @@ Thank you! 🙏`;
               <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-900 flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
                 <div className="text-center md:text-left space-y-1">
                   <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Direct Payment Desk</span>
-                  <span className="text-xs font-black text-slate-300 block">{pricingSettings.payeeName || "Landlord Name"}</span>
-                  <span className="text-[9px] font-bold text-blue-500 block underline truncate max-w-[200px]">{pricingSettings.upiId || "landlord@upi"}</span>
+                  <span className="text-xs font-black text-slate-300 block">{pricingSettings.payeeName || "Owner Name"}</span>
+                  <span className="text-[9px] font-bold text-blue-500 block underline truncate max-w-[200px]">{pricingSettings.upiId || "owner@upi"}</span>
                 </div>
                 
                 {/* Real-time Dynamic UPI Pay QR */}
@@ -1579,9 +1841,9 @@ Thank you! 🙏`;
               {/* Premium Direct PDF Share Button */}
               <button 
                 onClick={() => handleSharePDF(selectedInvoice)}
-                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition flex items-center justify-center shadow-xl shadow-blue-500/10 animate-pulseFast"
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition flex items-center justify-center shadow-xl shadow-blue-500/10"
               >
-                <Share2 size={14} className="mr-2 animate-bounce" /> Share Real PDF (WhatsApp / Email)
+                <Share2 size={14} className="mr-2" /> Share Real PDF (WhatsApp / Email)
               </button>
 
               <div className="grid grid-cols-3 gap-2">
