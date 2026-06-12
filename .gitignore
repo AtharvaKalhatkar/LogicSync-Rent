@@ -1,0 +1,21 @@
+# Node dependency cache
+node_modules/
+rentmanagement-ui/node_modules/
+
+# Production build distributions
+dist/
+rentmanagement-ui/dist/
+
+# Maven build targets
+target/
+rentmanagement/target/
+
+# IDE files and caches
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
